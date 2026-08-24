@@ -15,11 +15,57 @@
 
 	let addUserId = $state('');
 	let addRole = $state('member');
+	let myUserId = $state('');
+	let copied = $state(false);
 
 	let roleTargetId = $state('');
 	let roleValue = $state('member');
 
 	let removeTargetId = $state('');
+
+	function decodeJwtPayload(token: string): Record<string, unknown> | null {
+		try {
+			const payload = token.split('.')[1];
+			if (!payload) return null;
+
+			const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+			const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+			const binary = atob(padded);
+			const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+			const decoded = new TextDecoder().decode(bytes);
+			return JSON.parse(decoded) as Record<string, unknown>;
+		} catch {
+			return null;
+		}
+	}
+
+	function getCurrentUserId(): string {
+		const token = localStorage.getItem('token');
+		if (!token) return '';
+		const claims = decodeJwtPayload(token);
+		return typeof claims?.sub === 'string' ? claims.sub : '';
+	}
+
+	async function copyMyUserId() {
+		errorMessage = '';
+		statusMessage = '';
+		const currentUserId = getCurrentUserId();
+		if (!currentUserId) {
+			errorMessage = 'Your user ID is not available. Please log in again.';
+			return;
+		}
+
+		try {
+			await navigator.clipboard.writeText(currentUserId);
+			copied = true;
+			statusMessage = `Copied your user ID: ${currentUserId}`;
+			setTimeout(() => {
+				copied = false;
+			}, 1200);
+		} catch {
+			errorMessage = 'Clipboard access is not available in this browser.';
+		}
+	}
 
 	function checkAuth() {
 		const auth = requireAuth();
@@ -109,7 +155,10 @@
 		}
 	}
 
-	onMount(checkAuth);
+	onMount(() => {
+		checkAuth();
+		myUserId = getCurrentUserId();
+	});
 </script>
 
 <svelte:head>
@@ -140,6 +189,26 @@
 			Add members by their user ID, adjust roles, or remove access. Only owners and admins can
 			manage members.
 		</p>
+
+		<div class="mt-8 rounded-2xl border border-white/[0.09] bg-white/[0.02] p-6">
+			<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p class="font-mono text-[11px] tracking-[0.18em] text-white/50 uppercase">
+						Your user ID
+					</p>
+					<p class="mt-2 font-mono text-xs break-all text-white/80">
+						{myUserId || 'Not available'}
+					</p>
+				</div>
+				<button
+					type="button"
+					onclick={copyMyUserId}
+					class="inline-flex items-center justify-center rounded-full border border-[#3fa9f5]/40 bg-[#3fa9f5]/10 px-4 py-2 text-sm font-medium text-[#a9dcff] transition hover:border-[#3fa9f5]/70 hover:bg-[#3fa9f5]/15"
+				>
+					{copied ? 'Copied' : 'Copy UUID'}
+				</button>
+			</div>
+		</div>
 
 		{#if errorMessage}
 			<div
